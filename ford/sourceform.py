@@ -430,6 +430,7 @@ class FortranContainer(FortranBase):
     USE_RE = re.compile("^use(?:\s*,\s*(?:non_)?intrinsic\s*::\s*|\s+)(\w+)\s*($|,.*)",re.IGNORECASE)
     CALL_RE = re.compile("(?:^|(?<=[^a-zA-Z0-9_%]))\w+(?=\s*\(\s*(?:.*?)\s*\))",re.IGNORECASE)
     SUBCALL_RE = re.compile("^(?:if\s*\(.*\)\s*)?call\s+(\w+)\s*(?:\(\s*(.*?)\s*\))?$",re.IGNORECASE)
+    SUBCALL_NOPAREN_RE = re.compile("^(?:if\s*\(.*\)\s*)?call\s+(\w+)\s*$",re.IGNORECASE)
     EXTERNAL_RE = re.compile("^external(?:\s+|\s*::\s*)(\w.*?)\s*$",re.IGNORECASE)
     
     VARIABLE_STRING = "^(integer|real|double\s*precision|character|complex|logical|type(?!\s+is)|class(?!\s+is|\s+default)|procedure{})\s*((?:\(|\s\w|[:,*]).*)$"
@@ -636,6 +637,14 @@ class FortranContainer(FortranBase):
                     self.uses.append(self.USE_RE.match(line).groups())
                 else:
                     raise Exception("Found USE statemnt in {}".format(type(self).__name__[7:].upper()))
+            elif self.SUBCALL_NOPAREN_RE.search(line):
+                if hasattr(self,'calls'):
+                    callvals = self.SUBCALL_NOPAREN_RE.findall(line)
+                    for val in callvals:
+                        if val.lower() not in self.calls and val.lower() not in INTRINSICS:
+                            self.calls.append(val.lower())
+                else:
+                    raise Exception("Found procedure call in {}".format(type(self).__name__[7:].upper()))
             elif self.CALL_RE.search(line):
                 if hasattr(self,'calls'):
                     callvals = self.CALL_RE.findall(line)
