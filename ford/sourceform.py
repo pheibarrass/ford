@@ -640,7 +640,7 @@ class FortranContainer(FortranBase):
                 if hasattr(self,'calls'):
                     callvals = self.CALL_RE.findall(line)
                     for val in callvals:
-                        if val.lower() not in self.calls and val.lower() not in INTRINSICS:
+                        if val.lower() not in [var.name.lower() for var in self.variables] and val.lower() not in self.calls and val.lower() not in INTRINSICS:
                             self.calls.append(val.lower())
                 else:
                     raise Exception("Found procedure call in {}".format(type(self).__name__[7:].upper()))
