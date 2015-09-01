@@ -28,7 +28,7 @@ import sys
 import os
 import shutil
 import time
-
+import traceback
 
 import jinja2
 if (sys.version_info[0]>2):
@@ -61,7 +61,7 @@ class Documentation(object):
         self.search = SearchPage(data,project)
         if data['relative']:
             ford.sourceform.set_base_url('..')
-            ford.pagetree.set_base_url('.,')
+            ford.pagetree.set_base_url('..')
             data['project_url'] = '..'
         self.graphs = GraphManager(data['project_url'],self.data['output_dir'],'graphs')
         for item in project.types:
@@ -106,7 +106,8 @@ class Documentation(object):
                     self.pagetree.append(PagetreePage(data,project,item))
         except Exception as e:
             if data['dbg']:
-                raise e
+                traceback.print_exc()
+                sys.exit('Error encountered.')
             else:
                 sys.exit('Error encountered. Run with "--debug" flag for traceback.')
         if data['search'].lower() == 'true':
@@ -138,7 +139,6 @@ class Documentation(object):
         os.mkdir(os.path.join(out_dir,'module'), 0o755)
         os.mkdir(os.path.join(out_dir,'program'), 0o755)
         os.mkdir(os.path.join(out_dir,'src'), 0o755)
-        #~ os.mkdir(os.path.join(out_dir,'graphs'), 0o755)
         copytree(os.path.join(loc,'css'), os.path.join(out_dir,'css'))
         copytree(os.path.join(loc,'fonts'), os.path.join(out_dir,'fonts'))
         copytree(os.path.join(loc,'js'), os.path.join(out_dir,'js'))
