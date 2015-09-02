@@ -1546,8 +1546,8 @@ class FortranVariable(FortranBase):
 
     def correlate(self,project):
         if (self.vartype == "type" or self.vartype == "class") and self.proto and self.proto[0] != '*':
-            if self.proto[0].lower() in self.parent.all_types:
-                self.proto[0] = self.parent.all_types[self.proto[0].lower()]
+            if self.proto[0].lower() in [name.lower() for name in self.parent.all_types]:
+                self.proto[0] = self.parent.all_types[[name for name in self.parent.all_types if name.lower()==self.proto[0].lower()][0]]
         elif self.vartype == "procedure" and self.proto and self.proto[0] != '*':
             if self.proto[0].lower() in self.parent.all_procs:
                 self.proto[0] = self.parent.all_procs[self.proto[0].lower()]
