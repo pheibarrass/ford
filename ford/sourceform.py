@@ -776,7 +776,7 @@ class FortranCodeUnit(FortranContainer):
                     argname = argname or call == a.name
                 if hasattr(self,'retvar'):
                     argname = argname or call == self.retvar.name
-                if call.lower() not in [name.lower() for name in self.all_vars] and (call.lower() not in [name.lower() for name in self.all_types] or call in self.all_procs) and not argname: tmplst.append(call)
+                if call.lower() not in [name.lower() for name in self.all_vars] and (call.lower() not in [name.lower() for name in self.all_types] and call.lower() not in [arg.name.lower() for arg in getattr(self.parent,'args',[])] or call in self.all_procs) and not argname: tmplst.append(call)
             self.calls = tmplst
             fileprocs = {}
             if self.parobj == 'sourcefile':
