@@ -516,6 +516,10 @@ class FortranContainer(FortranBase):
                 if hasattr(self,'attr_dict'):
                     if attr == 'data':
                         pass
+                    elif attr == 'external':
+                        names = [decl.strip() for decl in ford.utils.paren_split(',',match.group(2))]
+                        self.variables = [var for var in self.variables if var.name.lower() not in [name.lower() for name in names]]
+                        self.externals.extend(names)
                     elif attr == 'dimension' or attr == 'allocatable' or attr == 'pointer':
                         names = ford.utils.paren_split(',',match.group(2))
                         for name in names:
@@ -638,8 +642,11 @@ class FortranContainer(FortranBase):
                     raise Exception("Found finalization procedure in {}".format(type(self).__name__[7:].upper()))
             elif self.VARIABLE_RE.match(line):
                 if hasattr(self,'variables'):
-                    self.variables.extend(line_to_variables(source,line,
-                                          permission,self))
+                    variables, externals = line_to_variables(source,line,permission,self)
+                    if externals:
+                        self.externals.extend(externals)
+                    else:
+                        self.variables.extend(variables)
                 else:
                     raise Exception("Found variable in {}".format(type(self).__name__[7:].upper()))
             elif self.USE_RE.match(line):
@@ -695,6 +702,9 @@ class FortranCodeUnit(FortranContainer):
         for dt in self.types:
             self.all_types[dt.name] = dt
         self.all_vars = getattr(self.parent,'all_vars',{})
+        # Remove those host-associated variables made inaccessible by local external functions
+        for name in [external.lower() for external in self.externals if external.lower() in [var.lower() for var in self.all_vars]]:
+            del self.all_vars[[var for var in self.all_vars if var.lower()==name][0]]
         for var in self.variables:
             self.all_vars[var.name] = var
         
@@ -920,6 +930,7 @@ class FortranModule(FortranCodeUnit):
         # TODO: Add the ability to parse ONLY directives and procedure renaming
         self.uses = []
         self.variables = []
+        self.externals = []
         self.public_list = []
         self.private_list = []
         self.protected_list = []
@@ -945,7 +956,6 @@ class FortranModule(FortranCodeUnit):
             if not interface.abstract:
                 self.all_procs[interface.name.lower()] = interface
         self.process_attribs()
-        self.variables = [v for v in self.variables if 'external' not in v.attribs]
         self.pub_procs = {}
         for p, proc in self.all_procs.items():
             if proc.permission == "public":
@@ -1036,7 +1046,6 @@ class FortranSubmodule(FortranModule):
         # Create list of all local procedures. Ones coming from other modules
         # will be added later, during correlation.
         self.process_attribs()
-        self.variables = [v for v in self.variables if 'external' not in v.attribs]
         self.all_procs = {}
         for p in self.functions + self.subroutines:
             self.all_procs[p.name.lower()] = p
@@ -1085,6 +1094,7 @@ class FortranSubroutine(FortranCodeUnit):
                     if arg != '': self.args.append(arg.strip())
         self.bindC = line.group(4)
         self.variables = []
+        self.externals = []
         self.uses = []
         self.calls = []
         self.optional_list = []
@@ -1138,8 +1148,6 @@ class FortranSubroutine(FortranCodeUnit):
                     vartype = 'real'
                 self.args[i] = FortranVariable(self.args[i],vartype,self)
         self.process_attribs()
-        self.variables = [v for v in self.variables if 'external' not in v.attribs]
-    
     
 class FortranFunction(FortranCodeUnit):
     """
@@ -1203,6 +1211,7 @@ class FortranFunction(FortranCodeUnit):
                 self.bindC = self.bindC[0:search_from] + QUOTES_RE.sub(self.parent.strings[num],self.bindC[search_from:],count=1)
                 search_from += QUOTES_RE.search(self.bindC[search_from:]).end(0)
         self.variables = []
+        self.externals = []
         self.uses = []
         self.calls = []
         self.optional_list = []
@@ -1265,7 +1274,6 @@ class FortranFunction(FortranCodeUnit):
                     break
             # TODO:Add support for implicitely typed retval
         self.process_attribs()
-        self.variables = [v for v in self.variables if 'external' not in v.attribs]
 
 
 class FortranSubmoduleProcedure(FortranCodeUnit):
@@ -1277,6 +1285,7 @@ class FortranSubmoduleProcedure(FortranCodeUnit):
         self.proctype = 'Module Procedure'
         self.name = line.group(2)
         self.variables = []
+        self.externals = []
         self.uses = []
         self.calls = []
         self.subroutines = []
@@ -1298,7 +1307,6 @@ class FortranSubmoduleProcedure(FortranCodeUnit):
         for interface in self.interfaces:
             if not interface.abstract:
                 self.all_procs[interface.name.lower()] = interface
-        self.variables = [v for v in self.variables if 'external' not in v.attribs]
 
 
 class FortranProgram(FortranCodeUnit):
@@ -1308,6 +1316,7 @@ class FortranProgram(FortranCodeUnit):
     def _initialize(self,line):
         self.name = line.group(1)
         self.variables = []
+        self.externals = []
         self.subroutines = []
         self.functions = []
         self.interfaces = []
@@ -1328,8 +1337,6 @@ class FortranProgram(FortranCodeUnit):
             if not interface.abstract:
                 self.all_procs[interface.name.lower()] = interface
         self.process_attribs()
-        self.variables = [v for v in self.variables if 'external' not in v.attribs]
-        
     
     
 class FortranType(FortranContainer):
@@ -1663,9 +1670,12 @@ def line_to_variables(source, line, inherit_permission, parent):
     permission = inherit_permission
     parameter = False
     
+    EXTERNAL_RE = re.compile("external")
     attribmatch = ATTRIBSPLIT_RE.match(rest)
     if attribmatch:
         attribstr = attribmatch.group(1).strip()
+        if EXTERNAL_RE.match(attribstr):  # We have external functions, not variables.
+            return [], [name.strip() for name in ford.utils.paren_split(",",attribmatch.group(2))]
         declarestr = attribmatch.group(2).strip()
         tmp_attribs = ford.utils.paren_split(",",attribstr)
         for i in range(len(tmp_attribs)):
@@ -1729,7 +1739,7 @@ def line_to_variables(source, line, inherit_permission, parent):
         docline = source.__next__()
     source.pass_back(docline)
     varlist[-1].doc = doc
-    return varlist
+    return varlist, []
     
     
 
